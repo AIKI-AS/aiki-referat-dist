@@ -9,12 +9,16 @@ Krever en Mac med Apple Silicon (M1 eller nyere) og macOS 13 eller nyere.
 
 ## Installer
 
-Åpne **Terminal** (finn den med Cmd+Mellomrom, skriv «Terminal»), lim inn
-linja du har fått fra AIKI, og trykk Enter:
+Åpne **Terminal** — trykk Cmd+Mellomrom, skriv «Terminal», trykk Enter.
+
+Lim inn denne linja og trykk Enter:
 
 ```
-curl -fsSL https://raw.githubusercontent.com/AIKI-AS/aiki-referat-dist/main/scripts/install.sh | bash -s -- --calendar-key DIN-NØKKEL
+curl -fsSL https://referat.aiki.as/install | bash
 ```
+
+Du blir bedt om å lime inn nøkkelen du har fått av AIKI. Gjør det, trykk
+Enter, og resten går av seg selv.
 
 Det er alt. Du trenger ikke installere noe på forhånd — `curl` følger med
 macOS. Appen legger seg i Programmer og er ferdig konfigurert.

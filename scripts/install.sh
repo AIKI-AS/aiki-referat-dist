@@ -33,6 +33,20 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# Ingen nøkkel på kommandolinja: spør etter den i stedet. Det holder
+# kommandoen kort og lik for alle kunder, og nøkkelen havner ikke i
+# brukerens shell-historikk. Vi leser fra /dev/tty fordi stdin er opptatt
+# av selve scriptet når dette kjøres via «curl | bash».
+if [ -z "$CALENDAR_KEY" ] && [ -t 1 ] && { : < /dev/tty; } 2>/dev/null; then
+  printf 'Lim inn nøkkelen du fikk av AIKI (Enter for å hoppe over): '
+  if read -r CALENDAR_KEY < /dev/tty 2>/dev/null; then
+    CALENDAR_KEY=$(printf '%s' "$CALENDAR_KEY" | tr -d '[:space:]')
+  else
+    CALENDAR_KEY=""
+    echo
+  fi
+fi
+
 if [ "$(uname -m)" != "arm64" ]; then
   echo "❌ $APP_NAME krever en Mac med Apple Silicon (M-serien)."
   exit 1
