@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# AIKI Referat — installasjon/oppdatering med én kommando (Apple Silicon).
+# AIKI Meetings — installasjon/oppdatering med én kommando (Apple Silicon).
 #
-#   curl -fsSL https://aiki.as/referat | bash
+#   curl -fsSL https://referat.aiki.as/install | bash
 #
 # Laster ned siste utgivelse og installerer i Programmer. Nedlasting via curl
-# får ikke macOS' karantene-flagg, så appen åpner uten Gatekeeper-dialogen.
-# Installerer også kommandoen `aiki-referat` slik at oppdatering senere bare er:
-#   aiki-referat update
+# Installerer også kommandoen `aiki-meetings` slik at oppdatering senere bare er:
+#   aiki-meetings update
 set -euo pipefail
 
 REPO="AIKI-AS/aiki-referat-dist"
 BRANCH="main"
-APP_NAME="AIKI Referat"
-CLI_PATH="/usr/local/bin/aiki-referat"
+APP_NAME="AIKI Meetings"
+APP_IDENTIFIER="as.aiki.referat"
+CLI_PATH="/usr/local/bin/aiki-meetings"
 
 # Zero-touch provisjonering (INTERN-400/404/406): AIKI gir kunden en install-
 # kommando med nøkkel bakt inn, og appen konfigurerer seg selv:
@@ -52,9 +52,18 @@ if [ "$(uname -m)" != "arm64" ]; then
   exit 1
 fi
 
+MACOS_VERSION=$(sw_vers -productVersion)
+MACOS_MAJOR=${MACOS_VERSION%%.*}
+MACOS_REST=${MACOS_VERSION#*.}
+MACOS_MINOR=${MACOS_REST%%.*}
+if [ "$MACOS_MAJOR" -lt 14 ] || { [ "$MACOS_MAJOR" -eq 14 ] && [ "$MACOS_MINOR" -lt 4 ]; }; then
+  echo "❌ $APP_NAME krever macOS 14.4 eller nyere (fant $MACOS_VERSION)."
+  exit 1
+fi
+
 echo "→ Finner siste utgivelse av $APP_NAME ..."
-DMG_URL=$(curl -fsSL "https://api.github.com/repos/$REPO/releases" \
-  | grep -o 'https://[^"]*aarch64[^"]*\.dmg' | head -1)
+DMG_URL=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
+  | grep -o 'https://[^"]*/AIKI-Meetings\.dmg' | head -1 || true)
 
 if [ -z "$DMG_URL" ]; then
   echo "❌ Fant ingen utgivelse. Kontakt AIKI (jonathan@aiki.as)."
@@ -62,40 +71,74 @@ if [ -z "$DMG_URL" ]; then
 fi
 
 TMP_DIR=$(mktemp -d)
-trap 'rm -rf "$TMP_DIR"' EXIT
+MOUNT_POINT=""
+cleanup() {
+  if [ -n "$MOUNT_POINT" ]; then
+    hdiutil detach "$MOUNT_POINT" -quiet >/dev/null 2>&1 || true
+  fi
+  rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
 
 echo "→ Laster ned $(basename "$DMG_URL") ..."
 curl -fL --progress-bar "$DMG_URL" -o "$TMP_DIR/app.dmg"
 
 echo "→ Installerer i Programmer ..."
-MOUNT_POINT=$(hdiutil attach "$TMP_DIR/app.dmg" -nobrowse | grep -oE '/Volumes/.+' | head -1)
+MOUNT_POINT=$(hdiutil attach "$TMP_DIR/app.dmg" -nobrowse | grep -oE '/Volumes/.+' | head -1 || true)
 if [ -z "$MOUNT_POINT" ]; then
   echo "❌ Kunne ikke åpne diskbildet."
   exit 1
 fi
 
-# Close a running instance so we can overwrite it.
+SOURCE_APP="$MOUNT_POINT/$APP_NAME.app"
+if [ ! -d "$SOURCE_APP" ]; then
+  echo "❌ Diskbildet inneholder ikke $APP_NAME.app."
+  exit 1
+fi
+FOUND_IDENTIFIER=$(codesign -dv --verbose=4 "$SOURCE_APP" 2>&1 | sed -n 's/^Identifier=//p' || true)
+if [ "$FOUND_IDENTIFIER" != "$APP_IDENTIFIER" ]; then
+  echo "❌ Ugyldig app-identitet i utgivelsen."
+  exit 1
+fi
+codesign --verify --deep --strict "$SOURCE_APP" >/dev/null 2>&1 \
+  || { echo "❌ App-signaturen er ugyldig."; exit 1; }
+spctl --assess --type execute "$SOURCE_APP" >/dev/null 2>&1 \
+  || { echo "❌ Appen er ikke godkjent av Gatekeeper."; exit 1; }
+
+# Kopier og verifiser før den eksisterende appen røres.
+DEST_APP="/Applications/$APP_NAME.app"
+NEW_APP="/Applications/.$APP_NAME.installing.$$.app"
+OLD_APP="$TMP_DIR/previous.app"
+rm -rf "$NEW_APP"
+ditto "$SOURCE_APP" "$NEW_APP"
+codesign --verify --deep --strict "$NEW_APP" >/dev/null 2>&1 \
+  || { rm -rf "$NEW_APP"; echo "❌ Signaturen ble skadet under kopiering."; exit 1; }
+
+# Close a running instance so we can replace it atomically.
 osascript -e "quit app \"$APP_NAME\"" >/dev/null 2>&1 || true
 sleep 1
+if [ -e "$DEST_APP" ]; then
+  mv "$DEST_APP" "$OLD_APP"
+fi
+if ! mv "$NEW_APP" "$DEST_APP"; then
+  [ ! -e "$OLD_APP" ] || mv "$OLD_APP" "$DEST_APP"
+  echo "❌ Installasjonen feilet; forrige versjon er gjenopprettet."
+  exit 1
+fi
 
-rm -rf "/Applications/$APP_NAME.app"
-cp -R "$MOUNT_POINT/$APP_NAME.app" /Applications/
-hdiutil detach "$MOUNT_POINT" -quiet
-xattr -dr com.apple.quarantine "/Applications/$APP_NAME.app" 2>/dev/null || true
-
-# Install / refresh the `aiki-referat` command.
-echo "→ Installerer kommandoen 'aiki-referat' ..."
+# Install / refresh the `aiki-meetings` command.
+echo "→ Installerer kommandoen 'aiki-meetings' ..."
 CLI_CONTENT='#!/usr/bin/env bash
 case "${1:-open}" in
   update)
-    echo "Oppdaterer AIKI Referat ..."
+    echo "Oppdaterer AIKI Meetings ..."
     curl -fsSL "https://raw.githubusercontent.com/'"$REPO"'/'"$BRANCH"'/scripts/install.sh" | bash
     ;;
   open|"")
     open -a "'"$APP_NAME"'"
     ;;
   *)
-    echo "Bruk: aiki-referat [update|open]"
+    echo "Bruk: aiki-meetings [update|open]"
     ;;
 esac'
 if [ -w "$(dirname "$CLI_PATH")" ] || [ ! -e "$(dirname "$CLI_PATH")" ]; then
@@ -154,5 +197,5 @@ if [ -n "$VOCAB" ]; then
 fi
 
 echo "✅ $APP_NAME er installert. Åpner ..."
-echo "   Oppdater senere med:  aiki-referat update"
+echo "   Oppdater senere med:  aiki-meetings update"
 open "/Applications/$APP_NAME.app"

@@ -1,9 +1,10 @@
-# AIKI Referat — installasjon
+# AIKI Meetings — installasjon
 
-Møtenotattaker som tar opp, transkriberer og skriver referat **lokalt på din
-egen Mac**. Lyd og transkript forlater aldri maskinen.
+Møtenotattaker som tar opp og transkriberer lokalt på din Mac. Når automatisk
+referat er aktivert, sendes transkript og talernavn kryptert til AIKIs
+referattjeneste. Lyd sendes ikke til referattjenesten.
 
-Krever en Mac med Apple Silicon (M1 eller nyere) og macOS 13 eller nyere.
+Krever en Mac med Apple Silicon (M1 eller nyere) og macOS 14.4 eller nyere.
 
 ---
 
@@ -28,7 +29,7 @@ Første gang laster den ned språkmodellene (rundt 3 GB), så sett av litt tid.
 ## Oppdater senere
 
 ```
-aiki-referat update
+aiki-meetings update
 ```
 
 ## Hvis du helst vil unngå Terminal
@@ -36,18 +37,9 @@ aiki-referat update
 Last ned `.dmg`-fila fra [siste utgivelse](../../releases/latest), åpne den og
 dra appen til Programmer.
 
-macOS vil da blokkere appen første gang, fordi den ennå ikke er notarisert hos
-Apple. Slik åpner du den likevel:
-
-1. Prøv å åpne appen. Du får en melding om at den ikke kan åpnes.
-2. Gå til **Systeminnstillinger → Personvern og sikkerhet**.
-3. Bla ned. Der står det at «AIKI Referat» ble blokkert. Trykk **Åpne likevel**.
-4. Bekreft med passord eller Touch ID.
-
-Du gjør dette én gang. Terminal-kommandoen over hopper over hele dette steget,
-og er derfor den vi anbefaler.
-
-*Merk: du må da også legge inn nøkkelen din manuelt under Innstillinger.*
+Utgivelser publiseres først når signatur, Gatekeeper og notarization er
+verifisert. Hvis macOS avviser appen, ikke overstyr sikkerhetsvarselet; kontakt
+AIKI. Ved manuell installasjon må kundenøkkelen legges inn under Innstillinger.
 
 ## Hva appen gjør på maskinen din
 
@@ -56,8 +48,8 @@ og er derfor den vi anbefaler.
 | Tar opp møtet | Lokalt |
 | Gjør tale om til tekst | Lokalt (NB-Whisper fra Nasjonalbiblioteket) |
 | Skiller mellom talere | Lokalt |
-| Skriver referatet | Lokalt |
-| Lagrer opptak og referat | Lokalt, i mappa `~/aiki-referat` |
+| Skriver referatet | AIKIs EU-baserte referattjeneste, når aktivert |
+| Lagrer opptak, transkript og referat | Lokalt på Mac-en |
 | Sjekker kalenderen for møter | AIKIs server — kun møtetittel og tidspunkt |
 
 ## Trenger du hjelp?
