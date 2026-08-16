@@ -3,7 +3,14 @@
 #
 #   curl -fsSL https://referat.aiki.as/install | bash
 #
+# That address, not a raw.githubusercontent one: the code repo is private, so a
+# GitHub URL answers a customer with 404. This command is copied into emails and
+# onto the onboarding page, and a 404 there is the first thing a customer meets.
+#
 # Laster ned siste utgivelse og installerer i Programmer. Nedlasting via curl
+# får ikke macOS' karantene-flagg, så nedlastingen i seg selv utløser ingen
+# Gatekeeper-dialog — men appen må likevel være signert, fordi installasjonen
+# under avviser en app Gatekeeper ikke godkjenner.
 # Installerer også kommandoen `aiki-meetings` slik at oppdatering senere bare er:
 #   aiki-meetings update
 set -euo pipefail
@@ -13,6 +20,10 @@ BRANCH="main"
 APP_NAME="AIKI Meetings"
 APP_IDENTIFIER="as.aiki.referat"
 CLI_PATH="/usr/local/bin/aiki-meetings"
+# Appen har hatt to navn før dette. En pilotmaskin kan fortsatt ha begge liggende,
+# og to nesten like apper ved siden av hverandre er hvordan feil versjon startes.
+LEGACY_APP_NAMES=("AKTI" "AIKI Referat")
+LEGACY_CLI_PATHS=("/usr/local/bin/akti" "/usr/local/bin/aiki-referat")
 
 # Zero-touch provisjonering (INTERN-400/404/406): AIKI gir kunden en install-
 # kommando med nøkkel bakt inn, og appen konfigurerer seg selv:
@@ -157,7 +168,8 @@ fi
 
 if [ -n "$CALENDAR_KEY" ]; then
   mkdir -p "$HOME/aiki-referat"
-  printf '{\n  "url": "%s",\n  "key": "%s"\n}\n' "$CALENDAR_URL" "$CALENDAR_KEY" \
+  printf '{\n  "url": "%s",\n  "key": "%s",\n  "summary": { "provider": "server" }\n}\n' \
+    "$CALENDAR_URL" "$CALENDAR_KEY" \
     > "$HOME/aiki-referat/calendar-server.json"
   chmod 600 "$HOME/aiki-referat/calendar-server.json"
   echo "→ Kalenderoppsett provisjonert (appen konfigurerer seg selv)"
@@ -195,6 +207,20 @@ if [ -n "$VOCAB" ]; then
     > "$HOME/aiki-referat/ordliste.txt" || true
   echo "→ Ordliste provisjonert ($(grep -c . "$HOME/aiki-referat/ordliste.txt") begreper)"
 fi
+
+# Rydd bort de gamle navnene. Gjøres etter at den nye appen står trygt i
+# Programmer, slik at en feilet installasjon aldri etterlater maskinen tom.
+for legacy in "${LEGACY_APP_NAMES[@]}"; do
+  if [ -d "/Applications/$legacy.app" ]; then
+    rm -rf "/Applications/$legacy.app" 2>/dev/null \
+      || sudo -n rm -rf "/Applications/$legacy.app" 2>/dev/null || true
+    echo "→ Fjernet gammel installasjon: $legacy"
+  fi
+done
+for legacy in "${LEGACY_CLI_PATHS[@]}"; do
+  [ -e "$legacy" ] || continue
+  rm -f "$legacy" 2>/dev/null || sudo -n rm -f "$legacy" 2>/dev/null || true
+done
 
 echo "✅ $APP_NAME er installert. Åpner ..."
 echo "   Oppdater senere med:  aiki-meetings update"
