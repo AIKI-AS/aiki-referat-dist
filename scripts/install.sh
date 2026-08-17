@@ -72,14 +72,15 @@ if [ "$MACOS_MAJOR" -lt 14 ] || { [ "$MACOS_MAJOR" -eq 14 ] && [ "$MACOS_MINOR" 
   exit 1
 fi
 
-echo "→ Finner siste utgivelse av $APP_NAME ..."
-DMG_URL=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" \
-  | grep -o 'https://[^"]*/AIKI-Meetings\.dmg' | head -1 || true)
-
-if [ -z "$DMG_URL" ]; then
-  echo "❌ Fant ingen utgivelse. Kontakt AIKI (jonathan@aiki.as)."
-  exit 1
-fi
+# Den faste adressen, ikke API-et. api.github.com tillater 60 uautentiserte
+# kall i timen per IP, og en bedrift der alle deler én utgående adresse sliter
+# det opp på en formiddag — hvorpå installasjonen sier «fant ingen utgivelse»
+# og sender folk til støtte for noe som ikke er galt.
+#
+# Denne adressen er en ren omdirigering til siste utgivelse og har ingen slik
+# grense. Den forutsetter at assetet heter noe fast, som er nettopp derfor
+# publish-release.sh lager en kopi under et navn uten versjonsnummer.
+DMG_URL="https://github.com/$REPO/releases/latest/download/AIKI-Meetings.dmg"
 
 TMP_DIR=$(mktemp -d)
 MOUNT_POINT=""
@@ -92,7 +93,10 @@ cleanup() {
 trap cleanup EXIT
 
 echo "→ Laster ned $(basename "$DMG_URL") ..."
-curl -fL --progress-bar "$DMG_URL" -o "$TMP_DIR/app.dmg"
+if ! curl -fL --progress-bar "$DMG_URL" -o "$TMP_DIR/app.dmg"; then
+  echo "❌ Fikk ikke lastet ned $APP_NAME. Sjekk nettforbindelsen, eller kontakt AIKI (jonathan@aiki.as)."
+  exit 1
+fi
 
 # Integriteten til nedlastingen, uavhengig av Apple. Sjekksummen ligger ved
 # siden av DMG-en i utgivelsen, og fanger både en manipulert fil og en som
