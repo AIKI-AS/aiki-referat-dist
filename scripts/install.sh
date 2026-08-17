@@ -48,7 +48,10 @@ done
 # kommandoen kort og lik for alle kunder, og nøkkelen havner ikke i
 # brukerens shell-historikk. Vi leser fra /dev/tty fordi stdin er opptatt
 # av selve scriptet når dette kjøres via «curl | bash».
-if [ -z "$CALENDAR_KEY" ] && [ -t 1 ] && { : < /dev/tty; } 2>/dev/null; then
+# En maskin som allerede er provisjonert skal ikke spørres igjen — da er dette
+# en oppdatering, og nøkkelen ligger i calendar-server.json fra forrige gang.
+if [ -z "$CALENDAR_KEY" ] && [ ! -s "$HOME/aiki-referat/calendar-server.json" ] \
+   && [ -t 1 ] && { : < /dev/tty; } 2>/dev/null; then
   printf 'Lim inn nøkkelen du fikk av AIKI (Enter for å hoppe over): '
   if read -r CALENDAR_KEY < /dev/tty 2>/dev/null; then
     CALENDAR_KEY=$(printf '%s' "$CALENDAR_KEY" | tr -d '[:space:]')
@@ -191,7 +194,9 @@ CLI_CONTENT='#!/usr/bin/env bash
 case "${1:-open}" in
   update)
     echo "Oppdaterer AIKI Meetings ..."
-    curl -fsSL "https://raw.githubusercontent.com/'"$REPO"'/'"$BRANCH"'/scripts/install.sh" | bash
+    # referat.aiki.as, ikke raw.githubusercontent: raw deler rate limit per IP,
+    # og et kontor bak samme NAT fikk 429 midt i utrullingen.
+    curl -fsSL "https://referat.aiki.as/install" | bash
     ;;
   open|"")
     open -a "'"$APP_NAME"'"
