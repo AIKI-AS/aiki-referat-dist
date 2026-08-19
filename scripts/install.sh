@@ -39,6 +39,7 @@ while [ $# -gt 0 ]; do
     --calendar-key) CALENDAR_KEY="${2:-}"; shift 2 ;;
     --server) CALENDAR_URL="${2:-}"; shift 2 ;;
     --no-model) SEED_MODEL=0; shift ;;
+    --with-model) SEED_MODEL=2; shift ;;
     --vocab) VOCAB="${2:-}"; shift 2 ;;
     *) shift ;;
   esac
@@ -234,7 +235,15 @@ fi
 MODELS_DIR="$HOME/Library/Application Support/as.aiki.referat/models"
 MODEL_FILE="$MODELS_DIR/ggml-nb-whisper-large.bin"
 MODEL_URL="https://huggingface.co/NbAiLab/nb-whisper-large/resolve/main/ggml-model-q5_0.bin"
-if [ "$SEED_MODEL" = "1" ]; then
+# En provisjonert installasjon transkriberer på AIKI-serveren og trenger ikke
+# gigabyte-modellen — installasjonen blir liten og rask. --with-model tvinger
+# nedlasting for kunder som også vil kunne transkribere lokalt/offline.
+if [ "$SEED_MODEL" = "1" ]    && { [ -n "$CALENDAR_KEY" ] || [ -s "$HOME/aiki-referat/calendar-server.json" ]; }; then
+  echo "→ Server-transkribering er satt opp — hopper over modellnedlasting (~1 GB)."
+  echo "   Vil du også kunne transkribere lokalt: kjør kommandoen på nytt med --with-model"
+  SEED_MODEL=0
+fi
+if [ "$SEED_MODEL" -ge 1 ]; then
   MIN_BYTES=$((900 * 1024 * 1024))
   CUR_BYTES=$(stat -f%z "$MODEL_FILE" 2>/dev/null || echo 0)
   if [ "$CUR_BYTES" -ge "$MIN_BYTES" ]; then
