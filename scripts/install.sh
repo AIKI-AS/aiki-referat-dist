@@ -32,35 +32,22 @@ LEGACY_CLI_PATHS=("/usr/local/bin/akti" "/usr/local/bin/aiki-referat")
 # Flagg: --no-model hopper over forhåndsnedlasting av NB-Whisper (~1 GB).
 CALENDAR_KEY=""
 CALENDAR_URL="https://referat.aiki.as"
-SEED_MODEL=1
+SEED_MODEL=0
 VOCAB=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --calendar-key) CALENDAR_KEY="${2:-}"; shift 2 ;;
     --server) CALENDAR_URL="${2:-}"; shift 2 ;;
-    --no-model) SEED_MODEL=0; shift ;;
-    --with-model) SEED_MODEL=2; shift ;;
+    --no-model) SEED_MODEL=0; shift ;;  # beholdt for eldre instrukser
+    --with-model) SEED_MODEL=1; shift ;;
     --vocab) VOCAB="${2:-}"; shift 2 ;;
     *) shift ;;
   esac
 done
 
-# Ingen nøkkel på kommandolinja: spør etter den i stedet. Det holder
-# kommandoen kort og lik for alle kunder, og nøkkelen havner ikke i
-# brukerens shell-historikk. Vi leser fra /dev/tty fordi stdin er opptatt
-# av selve scriptet når dette kjøres via «curl | bash».
-# En maskin som allerede er provisjonert skal ikke spørres igjen — da er dette
-# en oppdatering, og nøkkelen ligger i calendar-server.json fra forrige gang.
-if [ -z "$CALENDAR_KEY" ] && [ ! -s "$HOME/aiki-referat/calendar-server.json" ] \
-   && [ -t 1 ] && { : < /dev/tty; } 2>/dev/null; then
-  printf 'Lim inn nøkkelen du fikk av AIKI (Enter for å hoppe over): '
-  if read -r CALENDAR_KEY < /dev/tty 2>/dev/null; then
-    CALENDAR_KEY=$(printf '%s' "$CALENDAR_KEY" | tr -d '[:space:]')
-  else
-    CALENDAR_KEY=""
-    echo
-  fi
-fi
+# Ingen nøkkelspørsmål lenger: brukeren logger inn med Microsoft eller Google
+# inne i appen, og nøkkelen ordner seg selv. --calendar-key finnes fortsatt
+# for skriptede utrullinger som vil provisjonere uten et menneske til stede.
 
 if [ "$(uname -m)" != "arm64" ]; then
   echo "❌ $APP_NAME krever en Mac med Apple Silicon (M-serien)."
@@ -235,14 +222,10 @@ fi
 MODELS_DIR="$HOME/Library/Application Support/as.aiki.referat/models"
 MODEL_FILE="$MODELS_DIR/ggml-nb-whisper-large.bin"
 MODEL_URL="https://huggingface.co/NbAiLab/nb-whisper-large/resolve/main/ggml-model-q5_0.bin"
-# En provisjonert installasjon transkriberer på AIKI-serveren og trenger ikke
-# gigabyte-modellen — installasjonen blir liten og rask. --with-model tvinger
-# nedlasting for kunder som også vil kunne transkribere lokalt/offline.
-if [ "$SEED_MODEL" = "1" ]    && { [ -n "$CALENDAR_KEY" ] || [ -s "$HOME/aiki-referat/calendar-server.json" ]; }; then
-  echo "→ Server-transkribering er satt opp — hopper over modellnedlasting (~1 GB)."
-  echo "   Vil du også kunne transkribere lokalt: kjør kommandoen på nytt med --with-model"
-  SEED_MODEL=0
-fi
+# Modellen lastes ikke ned her: en innlogget bruker transkriberer på
+# AIKI-serveren, og en som fortsetter uten innlogging får modellen av appen
+# selv i onboardingen. --with-model henter den likevel, for maskiner som skal
+# stå klare til lokal/offline transkribering fra første sekund.
 if [ "$SEED_MODEL" -ge 1 ]; then
   MIN_BYTES=$((900 * 1024 * 1024))
   CUR_BYTES=$(stat -f%z "$MODEL_FILE" 2>/dev/null || echo 0)
