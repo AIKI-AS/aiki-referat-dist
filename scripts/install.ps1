@@ -83,21 +83,37 @@ try {
 if ($CalendarKey) {
     $dir = Join-Path $env:USERPROFILE 'aiki-referat'
     New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    if ((Get-Item -LiteralPath $dir -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+        Fail 'Provisjoneringsmappen er en reparse point. Avbryter.'
+    }
+    # Restrict the directory before any secret bytes or temporary files exist.
+    $owner = [Security.Principal.WindowsIdentity]::GetCurrent().User
+    $directoryAcl = New-Object Security.AccessControl.DirectorySecurity
+    $directoryAcl.SetAccessRuleProtection($true, $false)
+    $directoryAcl.SetOwner($owner)
+    $directoryAcl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule(
+        $owner, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+    Set-Acl -LiteralPath $dir -AclObject $directoryAcl
     $config = @{
         url     = 'https://referat.aiki.as'
         key     = $CalendarKey
         summary = @{ provider = 'server' }
     } | ConvertTo-Json
     $path = Join-Path $dir 'calendar-server.json'
-    Set-Content -Path $path -Value $config -Encoding UTF8
-
-    # Bare eieren skal kunne lese en credential, ogsaa naar hjemmemappa er
-    # delt. Motstykket til chmod 600.
-    $acl = Get-Acl $path
-    $acl.SetAccessRuleProtection($true, $false)
-    $acl.SetAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
-        $env:USERNAME, 'FullControl', 'Allow')))
-    Set-Acl -Path $path -AclObject $acl
+    $provisionTemp = Join-Path $dir ('.calendar-server.' + [Guid]::NewGuid().ToString('N'))
+    try {
+        [IO.File]::WriteAllText($provisionTemp, $config, (New-Object Text.UTF8Encoding($false)))
+        if (Test-Path -LiteralPath $path) {
+            if ((Get-Item -LiteralPath $path -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                Fail 'Provisjoneringsfilen er en reparse point. Avbryter.'
+            }
+            [IO.File]::Replace($provisionTemp, $path, $null)
+        } else {
+            [IO.File]::Move($provisionTemp, $path)
+        }
+    } finally {
+        if (Test-Path -LiteralPath $provisionTemp) { Remove-Item -LiteralPath $provisionTemp -Force }
+    }
 
     Step 'Kalenderoppsett provisjonert (appen konfigurerer seg selv)'
 }
@@ -107,10 +123,11 @@ if ($CalendarKey) {
 # pakke-IDen, ikke produktnavnet.
 $modelsDir = Join-Path $env:APPDATA 'as.aiki.referat\models'
 $modelFile = Join-Path $modelsDir 'ggml-nb-whisper-large.bin'
-$modelUrl  = 'https://huggingface.co/NbAiLab/nb-whisper-large/resolve/main/ggml-model-q5_0.bin'
-$minBytes  = 900MB
+$modelUrl  = 'https://huggingface.co/NbAiLab/nb-whisper-large/resolve/8c6249fdeeb4dcd05e5735a4c39640607eb6e4ac/ggml-model-q5_0.bin'
+# Git LFS object ID from the publisher's repository metadata, 2026-09-12.
+$modelSha256 = 'feb5951ae694a62cfeb81fb501f6cfa8cc50d96bcddb1e4e8215f7006bac23a2'
 
-if ((Test-Path $modelFile) -and ((Get-Item $modelFile).Length -ge $minBytes)) {
+if ((Test-Path $modelFile) -and ((Get-FileHash -Algorithm SHA256 $modelFile).Hash -eq $modelSha256)) {
     Step 'NB-Whisper-modellen finnes allerede - hopper over nedlasting'
 } else {
     Step 'Laster ned den norske talegjenkjenningsmodellen (~1 GB) ...'
@@ -118,7 +135,7 @@ if ((Test-Path $modelFile) -and ((Get-Item $modelFile).Length -ge $minBytes)) {
     $part = "$modelFile.part"
     try {
         Invoke-WebRequest -Uri $modelUrl -OutFile $part
-        if ((Get-Item $part).Length -lt $minBytes) {
+        if ((Get-FileHash -Algorithm SHA256 $part).Hash -ne $modelSha256) {
             Remove-Item -Force $part -ErrorAction SilentlyContinue
             Write-Host '   Nedlastingen ble ufullstendig. Appen henter modellen selv ved foerste oppstart.'
         } else {
