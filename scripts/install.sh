@@ -208,11 +208,27 @@ if [ "${NEED_SUDO:-0}" = "1" ]; then
 fi
 
 if [ -n "$CALENDAR_KEY" ]; then
-  mkdir -p "$HOME/aiki-referat"
-  printf '{\n  "url": "%s",\n  "key": "%s",\n  "summary": { "provider": "server" }\n}\n' \
-    "$CALENDAR_URL" "$CALENDAR_KEY" \
-    > "$HOME/aiki-referat/calendar-server.json"
-  chmod 600 "$HOME/aiki-referat/calendar-server.json"
+  (
+    umask 077
+    PROVISION_DIR="$HOME/aiki-referat"
+    [ ! -L "$PROVISION_DIR" ] || { echo "Provisjoneringsmappen er en symlink; avbryter." >&2; exit 1; }
+    mkdir -p "$PROVISION_DIR"
+    chmod 700 "$PROVISION_DIR"
+    PROVISION_TMP=$(mktemp "$PROVISION_DIR/.calendar-server.XXXXXXXX")
+    trap 'rm -f "$PROVISION_TMP"' EXIT
+    json_string() {
+      local value="$1"
+      value=${value//\\/\\\\}
+      value=${value//\"/\\\"}
+      value=${value//$'\n'/\\n}
+      value=${value//$'\r'/\\r}
+      value=${value//$'\t'/\\t}
+      printf '%s' "$value"
+    }
+    printf '{\n  "url": "%s",\n  "key": "%s",\n  "summary": { "provider": "server" }\n}\n' \
+      "$(json_string "$CALENDAR_URL")" "$(json_string "$CALENDAR_KEY")" > "$PROVISION_TMP"
+    mv -f "$PROVISION_TMP" "$PROVISION_DIR/calendar-server.json"
+  )
   echo "→ Kalenderoppsett provisjonert (appen konfigurerer seg selv)"
 fi
 
@@ -221,21 +237,20 @@ fi
 # bruker (config.rs / whisper_engine.rs) — appen ser bare at modellen finnes.
 MODELS_DIR="$HOME/Library/Application Support/as.aiki.referat/models"
 MODEL_FILE="$MODELS_DIR/ggml-nb-whisper-large.bin"
-MODEL_URL="https://huggingface.co/NbAiLab/nb-whisper-large/resolve/main/ggml-model-q5_0.bin"
+MODEL_URL="https://huggingface.co/NbAiLab/nb-whisper-large/resolve/8c6249fdeeb4dcd05e5735a4c39640607eb6e4ac/ggml-model-q5_0.bin"
+MODEL_SHA256="feb5951ae694a62cfeb81fb501f6cfa8cc50d96bcddb1e4e8215f7006bac23a2"
 # Modellen lastes ikke ned her: en innlogget bruker transkriberer på
 # AIKI-serveren, og en som fortsetter uten innlogging får modellen av appen
 # selv i onboardingen. --with-model henter den likevel, for maskiner som skal
 # stå klare til lokal/offline transkribering fra første sekund.
 if [ "$SEED_MODEL" -ge 1 ]; then
-  MIN_BYTES=$((900 * 1024 * 1024))
-  CUR_BYTES=$(stat -f%z "$MODEL_FILE" 2>/dev/null || echo 0)
-  if [ "$CUR_BYTES" -ge "$MIN_BYTES" ]; then
+  if [ -f "$MODEL_FILE" ] && [ "$(shasum -a 256 "$MODEL_FILE" | cut -d ' ' -f 1)" = "$MODEL_SHA256" ]; then
     echo "→ NB-Whisper-modellen finnes allerede — hopper over nedlasting"
   else
     echo "→ Laster ned NB-Whisper Large (~1 GB) — dette tar noen minutter ..."
     mkdir -p "$MODELS_DIR"
     if curl -fL --progress-bar -C - "$MODEL_URL" -o "$MODEL_FILE.part" \
-       && [ "$(stat -f%z "$MODEL_FILE.part" 2>/dev/null || echo 0)" -ge "$MIN_BYTES" ]; then
+       && [ "$(shasum -a 256 "$MODEL_FILE.part" | cut -d ' ' -f 1)" = "$MODEL_SHA256" ]; then
       mv "$MODEL_FILE.part" "$MODEL_FILE"
       echo "→ Modell klar — transkribering fungerer fra første sekund"
     else
